@@ -77,7 +77,7 @@ app.post('/upload', async (req, res) => {
     res.json({
       success: true,
       id:  videoId,
-      url: https://youtu.be/${videoId}
+      url: `https://youtu.be/${videoId}`
     });
 
   } catch (err) {
@@ -89,5 +89,5 @@ app.post('/upload', async (req, res) => {
 // ────────── Inicializa servidor ───
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(YouTube-uploader listening on port ${PORT});
+  console.log(`YouTube-uploader listening on port ${PORT}`);
 });
