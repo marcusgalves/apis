@@ -3,6 +3,7 @@ const express = require('express');
 const fs = require('fs');
 const { google } = require('googleapis');
 const { HttpsProxyAgent } = require('https-proxy-agent');
+const { SocksProxyAgent } = require('socks-proxy-agent');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -45,23 +46,26 @@ app.post('/upload', async (req, res) => {
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: accessToken });
 
-    // 4. Opcional: configura proxy se proxy_url estiver no header
+    // 4. Configura proxy se proxy_url estiver presente
     const proxyUrl = req.headers['proxy_url'];
-    let proxyAgent;
+    let agent;
     if (proxyUrl) {
       try {
-        proxyAgent = new HttpsProxyAgent(proxyUrl);
+        if (/^socks/i.test(proxyUrl)) {
+          agent = new SocksProxyAgent(proxyUrl);
+        } else {
+          agent = new HttpsProxyAgent(proxyUrl);
+        }
       } catch (err) {
         console.error('Proxy inválido:', err.message);
         return res.status(400).json({ error: 'Proxy inválido', detail: err.message });
       }
     }
 
-    // 5. Monta client YouTube com ou sem proxy
+    // 5. Monta client do YouTube com ou sem proxy
     const youtubeOptions = { version: 'v3', auth: oauth2Client };
-    if (proxyAgent) {
-      // gaxiosOptions será repassado ao HTTP client interno
-      youtubeOptions.gaxiosOptions = { agent: proxyAgent };
+    if (agent) {
+      youtubeOptions.gaxiosOptions = { agent };
     }
     const youtube = google.youtube(youtubeOptions);
 
@@ -86,7 +90,8 @@ app.post('/upload', async (req, res) => {
 
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err?.errors?.[0]?.message || err.message });
+    const status = err.message?.toLowerCase().includes('proxy') ? 400 : 500;
+    res.status(status).json({ error: err?.errors?.[0]?.message || err.message });
   }
 });
 
