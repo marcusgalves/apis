@@ -1,7 +1,8 @@
 require('dotenv').config();
-const express  = require('express');
-const fs       = require('fs');
+const express = require('express');
+const fs = require('fs');
 const { google } = require('googleapis');
+const { HttpsProxyAgent } = require('https-proxy-agent');
 
 const app = express();
 app.use(express.json({ limit: '50mb' }));
@@ -44,41 +45,44 @@ app.post('/upload', async (req, res) => {
     const oauth2Client = new google.auth.OAuth2();
     oauth2Client.setCredentials({ access_token: accessToken });
 
-    const youtube = google.youtube({ version: 'v3', auth: oauth2Client });
+    // 4. Opcional: configura proxy se proxy_url estiver no header
+    const proxyUrl = req.headers['proxy_url'];
+    let proxyAgent;
+    if (proxyUrl) {
+      try {
+        proxyAgent = new HttpsProxyAgent(proxyUrl);
+      } catch (err) {
+        console.error('Proxy inválido:', err.message);
+        return res.status(400).json({ error: 'Proxy inválido', detail: err.message });
+      }
+    }
 
-    // 4. Monta status (inclui publishAt se veio)
+    // 5. Monta client YouTube com ou sem proxy
+    const youtubeOptions = { version: 'v3', auth: oauth2Client };
+    if (proxyAgent) {
+      // gaxiosOptions será repassado ao HTTP client interno
+      youtubeOptions.gaxiosOptions = { agent: proxyAgent };
+    }
+    const youtube = google.youtube(youtubeOptions);
+
+    // 6. Monta status (inclui publishAt se veio)
     const status = { privacyStatus };
     if (publishAt) status.publishAt = publishAt;
 
-    // 5. Monta snippet com os campos apropriados
-    const snippet = {
-      title,
-      description,
-      tags
-    };
-
+    // 7. Monta snippet com os campos apropriados
+    const snippet = { title, description, tags };
     if (defaultLanguage) snippet.defaultLanguage = defaultLanguage;
     if (defaultAudioLanguage) snippet.defaultAudioLanguage = defaultAudioLanguage;
 
-    // 6. Faz upload (resumable por padrão)
+    // 8. Faz upload (resumable por padrão)
     const response = await youtube.videos.insert({
       part: ['snippet', 'status'],
-      requestBody: {
-        snippet,
-        status
-      },
-      media: {
-        body: fs.createReadStream(filePath)   // pode ser grande (stream)
-      }
+      requestBody: { snippet, status },
+      media: { body: fs.createReadStream(filePath) }
     });
 
     const videoId = response.data.id;
-
-    res.json({
-      success: true,
-      id:  videoId,
-      url: `https://youtu.be/${videoId}`
-    });
+    res.json({ success: true, id: videoId, url: `https://youtu.be/${videoId}` });
 
   } catch (err) {
     console.error(err);
